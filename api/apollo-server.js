@@ -51,6 +51,10 @@ const server = new ProtectedApolloServer({
       };
     }
 
+    // Add GraphQL operation information to the statsd tags
+    req.statsdTags = {
+      graphqlOperationName: req.body.operationName || 'unknown_operation',
+    };
     const loaders = createLoaders();
     let currentUser = req.user && !req.user.bannedAt ? req.user : null;
 
@@ -60,21 +64,8 @@ const server = new ProtectedApolloServer({
         new Promise((res, rej) =>
           req.login(data, err => (err ? rej(err) : res()))
         ),
+      req,
       user: currentUser,
-      getImageSignatureExpiration: () => {
-        /*
-          Expire images sent to the client at midnight each day (UTC).
-          Expiration needs to be consistent across all images in order
-          to preserve client-side caching abilities and to prevent checksum
-          mismatches during SSR
-        */
-        const date = new Date();
-        date.setHours(24);
-        date.setMinutes(0);
-        date.setSeconds(0);
-        date.setMilliseconds(0);
-        return date.getTime();
-      },
     };
   },
   subscriptions: {
@@ -98,32 +89,16 @@ const server = new ProtectedApolloServer({
           return {
             user: user || null,
             loaders: createLoaders({ cache: false }),
-            getImageSignatureExpiration: () => {
-              const date = new Date();
-              date.setHours(24);
-              date.setMinutes(0);
-              date.setSeconds(0);
-              date.setMilliseconds(0);
-              return date.getTime();
-            },
           };
         })
         .catch(err => {
           console.error(err);
           return {
             loaders: createLoaders({ cache: false }),
-            getImageSignatureExpiration: () => {
-              const date = new Date();
-              date.setHours(24);
-              date.setMinutes(0);
-              date.setSeconds(0);
-              date.setMilliseconds(0);
-              return date.getTime();
-            },
           };
         }),
   },
-  playground: {
+  playground: process.env.NODE_ENV !== 'production' && {
     settings: {
       'editor.theme': 'light',
     },
@@ -139,10 +114,11 @@ const server = new ProtectedApolloServer({
       },
     ],
   },
+  introspection: process.env.NODE_ENV !== 'production',
   maxFileSize: 25 * 1024 * 1024, // 25MB
   engine: false,
-  tracing: true,
-  cacheControl: true,
+  tracing: false,
+  cacheControl: false,
   validationRules: [depthLimit(10)],
 });
 

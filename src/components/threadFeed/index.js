@@ -7,17 +7,20 @@ import compose from 'recompose/compose';
 import InfiniteList from 'src/components/infiniteScroll';
 import { deduplicateChildren } from 'src/components/infiniteScroll/deduplicateChildren';
 import { connect } from 'react-redux';
-import Link from 'src/components/link';
+import { Link } from 'react-router-dom';
 import Icon from 'src/components/icons';
 import InboxThread from 'src/views/dashboard/components/inboxThread';
 import { NullCard } from '../upsell';
 import { LoadingInboxThread } from '../loading';
 import NewActivityIndicator from '../newActivityIndicator';
 import ViewError from '../viewError';
-import { Upsell, UpsellHeader, UpsellFooter } from './style';
+import { Upsell, UpsellHeader, UpsellFooter, UpsellBlock } from './style';
 import type { GetCommunityType } from 'shared/graphql/queries/community/getCommunity';
 import type { Dispatch } from 'redux';
 import { ErrorBoundary } from 'src/components/error';
+import { withCurrentUser } from 'src/components/withCurrentUser';
+import { useConnectionRestored } from 'src/hooks/useConnectionRestored';
+import type { WebsocketConnectionType } from 'src/reducers/connectionStatus';
 
 const NullState = ({ viewContext, search }) => {
   let hd;
@@ -63,7 +66,7 @@ const UpsellState = ({ community }) => (
     <p>
       First things first, you’ll want to <b>start a couple threads</b>.
     </p>
-    <p>
+    <UpsellBlock>
       Open-ended questions are a great start, for example:
       <ul>
         <li>ask new members to introduce themselves</li>
@@ -72,7 +75,7 @@ const UpsellState = ({ community }) => (
         </li>
         <li>ask for suggestions on a problem you’re facing</li>
       </ul>
-    </p>
+    </UpsellBlock>
     <p>
       Once you’ve got a couple threads started, make sure to{' '}
       <b>help people find your community</b>. Talking about your community on
@@ -136,6 +139,7 @@ type Props = {
     community?: any,
     channel?: any,
     threads?: Array<any>,
+    refetch: Function,
   },
   community: GetCommunityType,
   setThreadsStatus: Function,
@@ -154,6 +158,8 @@ type Props = {
   newActivityIndicator: ?boolean,
   dispatch: Dispatch<Object>,
   search?: boolean,
+  networkOnline: boolean,
+  websocketConnection: WebsocketConnectionType,
 };
 
 type State = {
@@ -183,8 +189,10 @@ class ThreadFeedPure extends React.Component<Props, State> {
     }
   };
 
-  shouldComponentUpdate(nextProps) {
+  shouldComponentUpdate(nextProps: Props) {
     const curr = this.props;
+    if (curr.networkOnline !== nextProps.networkOnline) return true;
+    if (curr.websocketConnection !== nextProps.websocketConnection) return true;
     // fetching more
     if (curr.data.networkStatus === 7 && nextProps.data.networkStatus === 3)
       return false;
@@ -207,11 +215,16 @@ class ThreadFeedPure extends React.Component<Props, State> {
     this.subscribe();
   }
 
-  componentDidUpdate(prevProps) {
+  componentDidUpdate(prev: Props) {
     const curr = this.props;
 
+    const didReconnect = useConnectionRestored({ curr, prev });
+    if (didReconnect && curr.data.refetch) {
+      curr.data.refetch();
+    }
+
     if (
-      !prevProps.data.thread &&
+      !prev.data.thread &&
       curr.data.threads &&
       curr.data.threads.length === 0
     ) {
@@ -368,12 +381,14 @@ class ThreadFeedPure extends React.Component<Props, State> {
 }
 
 const map = state => ({
-  currentUser: state.users.currentUser,
   newActivityIndicator: state.newActivityIndicator.hasNew,
+  networkOnline: state.connectionStatus.networkOnline,
+  websocketConnection: state.connectionStatus.websocketConnection,
 });
 const ThreadFeed = compose(
   // $FlowIssue
-  connect(map)
+  connect(map),
+  withCurrentUser
 )(ThreadFeedPure);
 
 export default ThreadFeed;

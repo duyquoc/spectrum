@@ -478,6 +478,8 @@ export const approvePendingMemberInCommunity = async (
         context: { communityId },
       });
 
+      incrementMemberCount(communityId);
+
       return result.changes[0].new_val;
     });
 };
@@ -677,10 +679,9 @@ export const getUsersPermissionsInCommunities = (input: Array<UserIdAndCommunity
 export const getReputationByUser = (userId: string): Promise<Number> => {
   return db
     .table('usersCommunities')
-    .getAll(userId, { index: 'userId' })
-    .filter({ isMember: true })
+    .getAll([userId, true], { index: 'userIdAndIsMember' })
     .map(rec => rec('reputation'))
-    .reduce((l, r) => l.add(r))
+    .count()
     .default(0)
     .run();
 };
@@ -689,8 +690,7 @@ export const getReputationByUser = (userId: string): Promise<Number> => {
 export const getUsersTotalReputation = (userIds: Array<string>): Promise<Array<number>> => {
   return db
     .table('usersCommunities')
-    .getAll(...userIds, { index: 'userId' })
-    .filter({ isMember: true })
+    .getAll(...userIds.map(userId => ([userId, true])), { index: 'userIdAndIsMember' })
     .group('userId')
     .map(rec => rec('reputation'))
     .reduce((l, r) => l.add(r))

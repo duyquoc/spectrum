@@ -52,37 +52,38 @@ describe('Thread View', () => {
     it('should prompt logged-out users to log in', () => {
       const newMessage = 'A new message!';
       cy.get('[data-cy="thread-view"]').should('be.visible');
-      cy.get('[contenteditable="true"]').type(newMessage);
-      // Wait for the messages to be loaded before sending new message
-      cy.get('[data-cy="message-group"]').should('be.visible');
-      cy.get('[data-cy="chat-input-send-button"]').click();
-      cy.contains('Sign in');
+      cy.get('[data-cy="join-channel-login-upsell"]').should('be.visible');
+      cy.get('[data-cy="thread-join-channel-upsell-button"]').should(
+        'be.visible'
+      );
+      cy.get('[data-cy="thread-join-channel-upsell-button"]').click();
+      cy.get('[data-cy="login-modal"]').should('be.visible');
     });
   });
 
   describe('Public (authenticated)', () => {
     beforeEach(() => {
-      cy.auth(author.id);
-      cy.visit(`/thread/${thread.id}`);
+      cy.auth(author.id).then(() => cy.visit(`/thread/${thread.id}`));
     });
 
     it('should allow logged-in users to send public messages', () => {
       const newMessage = 'A new message!';
       cy.get('[data-cy="thread-view"]').should('be.visible');
-      cy.get('[contenteditable="true"]').type(newMessage);
+      cy.get('[data-cy="chat-input"]').type(newMessage);
       // Wait for the messages to be loaded before sending new message
       cy.get('[data-cy="message-group"]').should('be.visible');
       cy.get('[data-cy="chat-input-send-button"]').click();
       // Clear the chat input and make sure the message was sent by matching the text
-      cy.get('[contenteditable="true"]').type('');
+      cy.get('[data-cy="chat-input"]').clear();
       cy.contains(newMessage);
     });
   });
 
   describe('Private', () => {
     beforeEach(() => {
-      cy.auth(QUIET_USER_ID);
-      cy.visit(`/thread/${privateThread.id}`);
+      cy.auth(QUIET_USER_ID).then(() =>
+        cy.visit(`/thread/${privateThread.id}`)
+      );
     });
 
     it("should not allow logged-in users to send private messages if they don't have permission", () => {
@@ -92,25 +93,27 @@ describe('Thread View', () => {
 
   describe('Private (with permissions)', () => {
     beforeEach(() => {
-      cy.auth(privateAuthor.id);
-      cy.visit(`/thread/${privateThread.id}`);
+      cy.auth(privateAuthor.id).then(() =>
+        cy.visit(`/thread/${privateThread.id}`)
+      );
     });
 
     it('should allow logged-in users to send private messages if they have permission', () => {
       const newMessage = 'A new private message!';
       cy.get('[data-cy="thread-view"]').should('be.visible');
-      cy.get('[contenteditable="true"]').type(newMessage);
+      cy.get('[data-cy="chat-input"]').type(newMessage);
       cy.get('[data-cy="chat-input-send-button"]').click();
       // Clear the chat input and make sure the message was sent by matching the text
-      cy.get('[contenteditable="true"]').type('');
+      cy.get('[data-cy="chat-input"]').clear();
       cy.contains(newMessage);
     });
   });
 
   describe('Loading a thread with a message query parameter', () => {
     beforeEach(() => {
-      cy.auth(author.id);
-      cy.visit(`/thread/thread-1?m=MTQ4MzIyNTIwMDAwMQ==`);
+      cy.auth(author.id).then(() =>
+        cy.visit(`/thread/thread-1?m=MTQ4MzIyNTIwMDAwMQ==`)
+      );
     });
 
     it('should load only messages after the selected message', () => {
@@ -145,8 +148,7 @@ describe('Thread View', () => {
 
   describe('copy link to message', () => {
     beforeEach(() => {
-      cy.auth(author.id);
-      cy.visit(`/thread/${thread.id}`);
+      cy.auth(author.id).then(() => cy.visit(`/thread/${thread.id}`));
     });
 
     it('should copy link to message from message actions', () => {
@@ -170,17 +172,13 @@ describe('Thread View', () => {
         expect($p).to.have.length(3);
       });
       // the url should contain the message query param
-      cy.url().should(
-        'eq',
-        `http://localhost:3000/thread/${thread.id}?m=MTQ4MzIyNTE5OTk5OQ==`
-      );
+      cy.url().should('contain', `${thread.id}?m=MTQ4MzIyNTE5OTk5OQ==`);
     });
   });
 
   describe('message timestamp', () => {
     beforeEach(() => {
-      cy.auth(author.id);
-      cy.visit(`/thread/${thread.id}`);
+      cy.auth(author.id).then(() => cy.visit(`/thread/${thread.id}`));
     });
 
     it('should link the thread with message query param', () => {
@@ -204,17 +202,13 @@ describe('Thread View', () => {
         expect($p).to.have.length(3);
       });
       // the url should contain the message query param
-      cy.url().should(
-        'eq',
-        `http://localhost:3000/thread/${thread.id}?m=MTQ4MzIyNTE5OTk5OQ==`
-      );
+      cy.url().should('contain', `?m=MTQ4MzIyNTE5OTk5OQ==`);
     });
   });
 
   describe('liking a message signed in', () => {
     beforeEach(() => {
-      cy.auth(author.id);
-      cy.visit(`/thread/${thread.id}`);
+      cy.auth(author.id).then(() => cy.visit(`/thread/${thread.id}`));
     });
 
     it('should like a message from the message action bar', () => {
@@ -240,7 +234,7 @@ describe('Thread View', () => {
       // the message should not be selected
       cy.get('[data-cy="message-selected"]').should('not.be.visible');
       // the url should not have changed
-      cy.url().should('eq', `http://localhost:3000/thread/${thread.id}`);
+      cy.url().should('not.contain', `?m`);
 
       // unlike the message from the message action bar
       cy.get('[data-cy="unlike-action"]')
@@ -254,7 +248,7 @@ describe('Thread View', () => {
         expect($p).to.have.length(3);
       });
       // the url should not have changed
-      cy.url().should('eq', `http://localhost:3000/thread/${thread.id}`);
+      cy.url().should('not.contain', `?m`);
     });
 
     it('should unlike a message from the inline reaction', () => {
@@ -274,7 +268,7 @@ describe('Thread View', () => {
       // no inline like buttons should be visible
       cy.get('[data-cy="inline-unlike-action"]').should('not.be.visible');
       // the url should not have changed
-      cy.url().should('eq', `http://localhost:3000/thread/${thread.id}`);
+      cy.url().should('not.contain', `?m`);
     });
 
     it('should not allow user to like their own message from inline reaction', () => {
@@ -343,8 +337,7 @@ describe('Thread View', () => {
 
   describe('delete message as message author', () => {
     beforeEach(() => {
-      cy.auth(author.id);
-      cy.visit(`/thread/${thread.id}`);
+      cy.auth(author.id).then(() => cy.visit(`/thread/${thread.id}`));
     });
 
     it('should allow a user to delete their own message', () => {
@@ -365,8 +358,7 @@ describe('Thread View', () => {
 
   describe('delete message as community moderator', () => {
     beforeEach(() => {
-      cy.auth(moderator.userId);
-      cy.visit(`/thread/${thread.id}`);
+      cy.auth(moderator.userId).then(() => cy.visit(`/thread/${thread.id}`));
     });
 
     it('should allow a user to delete all messages', () => {
@@ -396,10 +388,9 @@ describe('edit message signed out', () => {
   });
 });
 
-describe.only('edit message signed in', () => {
+describe('edit message signed in', () => {
   beforeEach(() => {
-    cy.auth(moderator.userId);
-    cy.visit(`/thread/${thread.id}`);
+    cy.auth(moderator.userId).then(() => cy.visit(`/thread/${thread.id}`));
   });
 
   it('should render edit buttons on current users messages', () => {
@@ -407,20 +398,30 @@ describe.only('edit message signed in', () => {
     cy.get('[data-cy="edit-message"]').should($p => {
       expect($p).to.have.length(2);
     });
-    cy.contains('The next one is an emoji-only one :scream:').should(
-      'be.visible'
-    );
+    cy.contains('The next one is an emoji-only one :scream:')
+      .scrollIntoView()
+      .should('be.visible');
+
     cy.get('[data-cy="edit-message"]')
       .last()
       .click({ force: true });
 
-    cy.get('[data-cy="edit-message-input"]').should('be.visible');
-    cy.get('[data-cy="edit-message-cancel"]').should('be.visible');
-    cy.get('[data-cy="edit-message-save"]').should('be.visible');
+    cy.get('[data-cy="edit-message-input"]')
+      .scrollIntoView()
+      .should('be.visible');
+
+    cy.get('[data-cy="edit-message-cancel"]')
+      .scrollIntoView()
+      .should('be.visible');
+
+    cy.get('[data-cy="edit-message-save"]')
+      .scrollIntoView()
+      .should('be.visible');
 
     cy.get('[data-cy="edit-message-cancel"]').click();
 
     cy.get('[data-cy="edit-message-input"]').should('not.be.visible');
+
     cy.get('[data-cy="edit-message-cancel"]').should('not.be.visible');
     cy.get('[data-cy="edit-message-save"]').should('not.be.visible');
 
@@ -429,22 +430,22 @@ describe.only('edit message signed in', () => {
       .click({ force: true });
 
     cy.get('[data-cy="edit-message-input"]');
-    cy.get('[contenteditable="true"]').type(' with edits');
+    cy.get('[data-cy="editing-chat-input"]').type(' with edits');
 
     cy.get('[data-cy="edit-message-save"]').click();
 
     cy.get('[data-cy="edit-message-input"]').should('not.be.visible');
+
     cy.get('[data-cy="edited-message-indicator"]').should('be.visible');
-    cy.contains('The next one is an emoji-only one :scream: with edits').should(
-      'be.visible'
-    );
+    cy.contains('The next one is an emoji-only one :scream: with edits')
+      .scrollIntoView()
+      .should('be.visible');
   });
 });
 
 describe('/new/thread', () => {
   beforeEach(() => {
-    cy.auth(author.id);
-    cy.visit('/new/thread');
+    cy.auth(author.id).then(() => cy.visit('/new/thread'));
   });
 
   it('should allow composing new threads', () => {

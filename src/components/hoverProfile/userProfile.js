@@ -4,7 +4,7 @@ import compose from 'recompose/compose';
 import { connect } from 'react-redux';
 import { withRouter } from 'react-router';
 import AvatarImage from 'src/components/avatar/image';
-import Link from 'src/components/link';
+import { Link } from 'react-router-dom';
 import Badge from 'src/components/badges';
 import { Button } from 'src/components/buttons';
 import ConditionalWrap from 'src/components/conditionalWrap';
@@ -12,6 +12,7 @@ import type { GetUserType } from 'shared/graphql/queries/user/getUser';
 import type { Dispatch } from 'redux';
 import renderTextWithLinks from 'src/helpers/render-text-with-markdown-links';
 import { initNewThreadWithUser } from 'src/actions/directMessageThreads';
+import { withCurrentUser } from 'src/components/withCurrentUser';
 import {
   HoverWrapper,
   ProfileCard,
@@ -101,9 +102,8 @@ class HoverProfile extends Component<ProfileProps> {
   }
 }
 
-const map = state => ({ currentUser: state.users.currentUser });
 export default compose(
-  //$FlowFixMe
-  connect(map),
-  withRouter
+  withCurrentUser,
+  withRouter,
+  connect()
 )(HoverProfile);

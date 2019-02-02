@@ -1,6 +1,6 @@
 // @flow
 import React from 'react';
-import Link from 'src/components/link';
+import { Link } from 'react-router-dom';
 import Card from 'src/components/card';
 import { connect } from 'react-redux';
 import { withRouter } from 'react-router';
@@ -18,6 +18,7 @@ import { displayLoadingCard } from 'src/components/loading';
 import Reputation from 'src/components/reputation';
 import renderTextWithLinks from 'src/helpers/render-text-with-markdown-links';
 import type { Dispatch } from 'redux';
+import { withCurrentUser } from 'src/components/withCurrentUser';
 import {
   FullProfile,
   ProfileHeader,
@@ -34,6 +35,7 @@ import {
   FullDescription,
   Title,
   ExtLink,
+  OnlineIndicator,
 } from './style';
 
 type CurrentUserProps = {
@@ -88,6 +90,7 @@ const UserWithData = ({
             user={user}
             size={128}
             showHoverProfile={showHoverProfile}
+            showOnlineStatus={false}
             style={{
               boxShadow: '0 0 0 2px #fff',
               marginRight: '0',
@@ -98,8 +101,16 @@ const UserWithData = ({
             <span style={{ marginRight: '4px' }}>@{user.username}</span>
             {user.betaSupporter && <Badge type="beta-supporter" />}
           </Subtitle>
+
           <FullDescription>
             {user.description && <p>{renderTextWithLinks(user.description)}</p>}
+
+            {user.isOnline && (
+              <ExtLink>
+                <OnlineIndicator /> Online now
+              </ExtLink>
+            )}
+
             <Reputation
               reputation={
                 user.contextPermissions
@@ -156,7 +167,6 @@ const UserWithData = ({
             <UserAvatar
               user={user}
               size={64}
-              onlineSize={'large'}
               showHoverProfile={showHoverProfile}
               style={{
                 boxShadow: '0 0 0 2px #fff',
@@ -257,10 +267,10 @@ const UserWithData = ({
 
 const User = compose(
   displayLoadingCard,
-  withRouter
+  withRouter,
+  withCurrentUser
 )(UserWithData);
 const mapStateToProps = state => ({
-  currentUser: state.users.currentUser,
   initNewThreadWithUser: state.directMessageThreads.initNewThreadWithUser,
 });
 // $FlowFixMe

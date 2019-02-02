@@ -9,8 +9,7 @@ const NEW_USERNAME = 'brian-edited';
 
 describe('edit a user', () => {
   beforeEach(() => {
-    cy.auth(user.id);
-    cy.visit(`/me/settings`);
+    cy.auth(user.id).then(() => cy.visit(`/me/settings`));
   });
 
   it('should edit a user', () => {
@@ -33,6 +32,8 @@ describe('edit a user', () => {
       .click()
       .clear()
       .type(NEW_DESCRIPTION);
+
+    cy.get('[data-cy="user-email-input"]').should('be.visible');
 
     cy.get('[data-cy="user-website-input"]')
       .should('be.visible')

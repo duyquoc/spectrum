@@ -42,6 +42,7 @@ import {
   getDefaultActiveChannel,
 } from './utils';
 import { events, track } from 'src/helpers/analytics';
+import { ESC, ENTER } from 'src/helpers/keycodes';
 
 type State = {
   title: string,
@@ -92,13 +93,17 @@ class ComposerWithData extends Component<Props, State> {
 
     let { storedBody, storedTitle } = this.getTitleAndBody();
 
+    const { activeCommunitySlug, activeChannelSlug } = queryString.parse(
+      props.location.search
+    );
+
     this.state = {
       title: storedTitle || '',
       body: storedBody || fromPlainText(''),
       availableCommunities: [],
       availableChannels: [],
-      activeCommunity: '',
-      activeChannel: '',
+      activeCommunity: activeCommunitySlug || '',
+      activeChannel: activeChannelSlug || '',
       isPublishing: false,
       postWasPublished: false,
     };
@@ -149,7 +154,7 @@ class ComposerWithData extends Component<Props, State> {
   handleIncomingProps = props => {
     const { user } = props.data;
     // if the user doesn't exist, bust outta here
-    if (!user || !user.id) return;
+    if (!user || !user.id || !user.communityConnection) return;
 
     const hasCommunities =
       user.communityConnection.edges &&
@@ -244,8 +249,9 @@ class ComposerWithData extends Component<Props, State> {
   }
 
   handleKeyPress = e => {
-    const esc = e.keyCode === 27;
-    const cmdEnter = e.keyCode === 13 && KeyBindingUtil.hasCommandModifier(e);
+    const esc = e.keyCode === ESC;
+    const cmdEnter =
+      e.keyCode === ENTER && KeyBindingUtil.hasCommandModifier(e);
 
     if (esc) {
       // Community/channel view
@@ -289,14 +295,20 @@ class ComposerWithData extends Component<Props, State> {
   componentWillUpdate(next) {
     const currChannelLength =
       this.props.data.user &&
+      this.props.data.user.channelConnection &&
       this.props.data.user.channelConnection.edges.length;
     const nextChannelLength =
-      next.data.user && next.data.user.channelConnection.edges.length;
+      next.data.user &&
+      next.data.user.channelConnection &&
+      next.data.user.channelConnection.edges.length;
     const currCommunityLength =
       this.props.data.user &&
+      this.props.data.user.communityConnection &&
       this.props.data.user.communityConnection.edges.length;
     const nextCommunityLength =
-      next.data.user && next.data.user.communityConnection.edges.length;
+      next.data.user &&
+      next.data.user.communityConnection &&
+      next.data.user.communityConnection.edges.length;
 
     if (
       (this.props.data.loading && !next.data.loading) ||

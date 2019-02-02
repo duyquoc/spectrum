@@ -5,6 +5,7 @@ import compose from 'recompose/compose';
 import { connect } from 'react-redux';
 import { withApollo } from 'react-apollo';
 import idx from 'idx';
+import slugg from 'slugg';
 import generateMetaInfo from 'shared/generate-meta-info';
 import { addCommunityToOnboarding } from '../../actions/newUserOnboarding';
 import Titlebar from 'src/views/titlebar';
@@ -13,8 +14,9 @@ import Messages from './components/messages';
 import Head from 'src/components/head';
 import ChatInput from 'src/components/chatInput';
 import ViewError from 'src/components/viewError';
-import Link from 'src/components/link';
+import { Link } from 'react-router-dom';
 import viewNetworkHandler from 'src/components/viewNetworkHandler';
+import { withCurrentUser } from 'src/components/withCurrentUser';
 import {
   getThreadByMatch,
   getThreadByMatchQuery,
@@ -40,7 +42,7 @@ import {
 import { CommunityAvatar } from 'src/components/avatar';
 import WatercoolerActionBar from './components/watercoolerActionBar';
 import { ErrorBoundary } from 'src/components/error';
-import generateImageFromText from 'src/helpers/generate-image-from-text';
+import getThreadLink from 'src/helpers/get-thread-link';
 
 type Props = {
   data: {
@@ -52,7 +54,8 @@ type Props = {
   currentUser: Object,
   dispatch: Dispatch<Object>,
   slider: boolean,
-  threadViewContext: 'slider' | 'fullscreen' | 'inbox',
+  // If this is undefined the thread is being viewed in fullscreen
+  threadViewContext?: 'slider' | 'inbox',
   threadSliderIsOpen: boolean,
   client: Object,
 };
@@ -66,6 +69,9 @@ type State = {
   lastSeen: ?number | ?string,
   bannerIsVisible: boolean,
   derivedState: Object,
+  // set as a callback when messages are loaded for a thread. the participants
+  // array is used to pre-populate @mention suggestions
+  participants: Array<?Object>,
 };
 
 class ThreadContainer extends React.Component<Props, State> {
@@ -87,6 +93,7 @@ class ThreadContainer extends React.Component<Props, State> {
       bannerIsVisible: false,
       scrollOffset: 0,
       derivedState: {},
+      participants: [],
     };
   }
 
@@ -186,11 +193,36 @@ class ThreadContainer extends React.Component<Props, State> {
         });
       }
     } catch (err) {
-      // no need to do anything here
+      // if theres an error finding the dom node, we should make sure
+      // the banner is not visible to avoid it accidentally covering content
+      this.setState({
+        bannerIsVisible: false,
+      });
     }
   };
 
   componentDidUpdate(prevProps) {
+    // If we're loading the thread for the first time make sure the URL is the right one, and if not
+    // redirect to the right one
+    if (
+      !this.props.threadViewContext &&
+      (!prevProps.data ||
+        !prevProps.data.thread ||
+        !prevProps.data.thread.id) &&
+      this.props.data &&
+      this.props.data.thread &&
+      this.props.data.thread.id
+    ) {
+      const { thread } = this.props.data;
+      const properUrl = `/${thread.community.slug}/${
+        thread.channel.slug
+      }/${slugg(thread.content.title)}~${thread.id}`;
+      // $FlowFixMe
+      if (this.props.location.pathname !== properUrl)
+        // $FlowFixMe
+        return this.props.history.replace(properUrl);
+    }
+
     // if the user is in the inbox and changes threads, it should initially scroll
     // to the top before continuing with logic to force scroll to the bottom
     if (
@@ -227,17 +259,19 @@ class ThreadContainer extends React.Component<Props, State> {
     if (!thread) return;
 
     // only when the thread has been returned for the first time should evaluate whether or not to focus the chat input
+    if (prevProps.data.thread && prevProps.data.thread.id === thread.id) return;
+
     const threadAndUser = currentUser && thread;
     if (threadAndUser && this.chatInput) {
       // if the user is viewing the inbox, opens the thread slider, and then closes it again, refocus the inbox inpu
       if (prevProps.threadSliderIsOpen && !threadSliderIsOpen) {
-        return this.chatInput.triggerFocus();
+        return this.chatInput.focus();
       }
 
       // if the thread slider is open while in the inbox, don't focus in the inbox
       if (threadSliderIsOpen) return;
 
-      return this.chatInput.triggerFocus();
+      return this.chatInput.focus();
     }
   }
 
@@ -264,7 +298,7 @@ class ThreadContainer extends React.Component<Props, State> {
   };
 
   renderChatInputOrUpsell = () => {
-    const { isEditing } = this.state;
+    const { isEditing, participants } = this.state;
     const {
       data: { thread },
       currentUser,
@@ -294,26 +328,25 @@ class ThreadContainer extends React.Component<Props, State> {
             forceScrollToBottom={this.forceScrollToBottom}
             onRef={chatInput => (this.chatInput = chatInput)}
             refetchThread={this.props.data.refetch}
+            participants={participants}
           />
         </ChatInputWrapper>
       </Input>
     );
 
-    if (!currentUser) {
-      return chatInputComponent;
-    }
+    const joinLoginUpsell = (
+      <JoinChannel channel={thread.channel} community={thread.community} />
+    );
 
-    if (currentUser && !currentUser.id) {
-      return chatInputComponent;
+    if (!currentUser || !currentUser.id) {
+      return joinLoginUpsell;
     }
 
     if (channelPermissions.isMember) {
       return chatInputComponent;
     }
 
-    return (
-      <JoinChannel channel={thread.channel} community={thread.community} />
-    );
+    return joinLoginUpsell;
   };
 
   renderPost = () => {
@@ -360,10 +393,29 @@ class ThreadContainer extends React.Component<Props, State> {
           toggleEdit={this.toggleEdit}
           thread={thread}
           slider={slider}
-          ref={c => (this.threadDetailElem = c)}
+          innerRef={c => (this.threadDetailElem = c)}
         />
       </React.Fragment>
     );
+  };
+
+  updateThreadParticipants = thread => {
+    const { messageConnection, author } = thread;
+
+    if (!messageConnection || messageConnection.edges.length === 0)
+      return this.setState({
+        participants: [author.user],
+      });
+
+    const participants = messageConnection.edges
+      .map(edge => edge.node)
+      .map(node => node.author.user);
+
+    const participantsWithAuthor = [...participants, author.user].filter(
+      (user, index, array) => array.indexOf(user) === index
+    );
+
+    return this.setState({ participants: participantsWithAuthor });
   };
 
   render() {
@@ -425,12 +477,7 @@ class ThreadContainer extends React.Component<Props, State> {
       const headDescription = isWatercooler
         ? `Watercooler chat for the ${thread.community.name} community`
         : description;
-      const metaImage = generateImageFromText({
-        title: isWatercooler
-          ? `Chat with the ${thread.community.name} community`
-          : thread.content.title,
-        footer: `spectrum.chat/${thread.community.slug}`,
-      });
+      const metaImage = thread.metaImage;
 
       return (
         <ErrorBoundary>
@@ -448,6 +495,7 @@ class ThreadContainer extends React.Component<Props, State> {
                 currentUser={currentUser}
                 slug={thread.community.slug}
                 id={thread.community.id}
+                sort="trending"
               />
             )}
 
@@ -458,6 +506,10 @@ class ThreadContainer extends React.Component<Props, State> {
                 type="article"
                 image={metaImage}
               >
+                <link
+                  rel="canonical"
+                  href={`https://spectrum.chat/${getThreadLink(thread)}`}
+                />
                 {metaImage && (
                   <meta name="twitter:card" content="summary_large_image" />
                 )}
@@ -511,16 +563,16 @@ class ThreadContainer extends React.Component<Props, State> {
                       contextualScrollToBottom={this.contextualScrollToBottom}
                       thread={thread}
                       isWatercooler={thread.watercooler} // used in the graphql query to always fetch the latest messages
+                      onMessagesLoaded={this.updateThreadParticipants}
                     />
                   )}
 
-                  {!isEditing &&
-                    isLocked && (
-                      <NullState
-                        icon="private"
-                        copy="This conversation has been locked."
-                      />
-                    )}
+                  {!isEditing && isLocked && (
+                    <NullState
+                      icon="private"
+                      copy="This conversation has been locked."
+                    />
+                  )}
                 </Detail>
               </Content>
 
@@ -549,7 +601,7 @@ class ThreadContainer extends React.Component<Props, State> {
               heading={'We had trouble loading this thread.'}
               subheading={
                 !hasError
-                  ? 'It may be private, or may have been deleted by an author or moderator.'
+                  ? 'It may be private or may have been deleted by the author or a moderator.'
                   : ''
               }
               refresh={hasError}
@@ -561,11 +613,10 @@ class ThreadContainer extends React.Component<Props, State> {
   }
 }
 
-const map = state => ({ currentUser: state.users.currentUser });
 export default compose(
-  // $FlowIssue
-  connect(map),
+  withCurrentUser,
   getThreadByMatch,
   viewNetworkHandler,
-  withApollo
+  withApollo,
+  connect()
 )(ThreadContainer);

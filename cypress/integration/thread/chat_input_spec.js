@@ -31,39 +31,38 @@ describe('chat input', () => {
 
     it('should render', () => {
       cy.get('[data-cy="thread-view"]').should('be.visible');
-      cy.get('[data-cy="chat-input-send-button"]').should('be.visible');
+      cy.get('[data-cy="chat-input-send-button"]').should('not.be.visible');
       cy.get('[data-cy="chat-input-media-uploader"]').should('not.be.visible');
-      cy.get('[data-cy="markdownHint"]').should('have.css', 'opacity', '0');
-
-      const newMessage = 'A new message!';
-      cy.get('[contenteditable="true"]').type(newMessage);
-      cy.get('[data-cy="markdownHint"]').should('have.css', 'opacity', '1');
-      // Wait for the messages to be loaded before sending new message
-      cy.get('[data-cy="message-group"]').should('be.visible');
-      cy.get('[data-cy="chat-input-send-button"]').click();
-      cy.contains('Sign in');
+      cy.get('[data-cy="join-channel-login-upsell"]').should('be.visible');
+      cy.get('[data-cy="thread-join-channel-upsell-button"]').should(
+        'be.visible'
+      );
+      cy.get('[data-cy="thread-join-channel-upsell-button"]').click();
+      cy.get('[data-cy="login-modal"]').should('be.visible');
     });
   });
 
   describe('authed non member', () => {
     beforeEach(() => {
-      cy.auth(nonMemberUser.id);
-      cy.visit(`/thread/${publicThread.id}`);
+      cy.auth(nonMemberUser.id).then(() =>
+        cy.visit(`/thread/${publicThread.id}`)
+      );
     });
 
     it('should render', () => {
       cy.get('[data-cy="thread-view"]').should('be.visible');
       cy.get('[data-cy="chat-input-send-button"]').should('not.be.visible');
-      cy
-        .get('[data-cy="thread-join-channel-upsell-button"]')
-        .should('be.visible');
+      cy.get('[data-cy="thread-join-channel-upsell-button"]').should(
+        'be.visible'
+      );
     });
   });
 
   describe('authed member', () => {
     beforeEach(() => {
-      cy.auth(memberInChannelUser.id);
-      cy.visit(`/thread/${publicThread.id}`);
+      cy.auth(memberInChannelUser.id).then(() =>
+        cy.visit(`/thread/${publicThread.id}`)
+      );
     });
 
     it('should render', () => {
@@ -74,44 +73,43 @@ describe('chat input', () => {
     it('should allow authed members to send messages', () => {
       const newMessage = 'A new message!';
       cy.get('[data-cy="thread-view"]').should('be.visible');
-      cy.get('[contenteditable="true"]').type(newMessage);
+      cy.get('[data-cy="chat-input"]').type(newMessage);
       // Wait for the messages to be loaded before sending new message
       cy.get('[data-cy="message-group"]').should('be.visible');
       cy.get('[data-cy="chat-input-send-button"]').click();
       // Clear the chat input and make sure the message was sent by matching the text
-      cy.get('[contenteditable="true"]').type('');
+      cy.get('[data-cy="chat-input"]').clear();
       cy.contains(newMessage);
     });
 
     it('should allow chat input to be maintained', () => {
       const newMessage = 'Persist New Message';
       cy.get('[data-cy="thread-view"]').should('be.visible');
-      cy.get('[contenteditable="true"]').type(newMessage);
-      cy.get('[contenteditable="true"]').contains(newMessage);
+      cy.get('[data-cy="chat-input"]').type(newMessage);
+      cy.get('[data-cy="chat-input"]').contains(newMessage);
       cy.get('[data-cy="message-group"]').should('be.visible');
       cy.wait(1000);
       // Reload page(incase page closed or crashed ,reload should have same effect)
       cy.reload();
-      cy.get('[contenteditable="true"]').contains(newMessage);
+      cy.get('[data-cy="chat-input"]').contains(newMessage);
     });
   });
 
   describe('message attachments', () => {
     beforeEach(() => {
-      cy.auth(memberInChannelUser.id);
-      cy.visit(`/thread/${publicThread.id}`);
+      cy.auth(memberInChannelUser.id).then(() =>
+        cy.visit(`/thread/${publicThread.id}`)
+      );
     });
 
     it('should allow quoting a message', () => {
       // Quote a message
       cy.get('[data-cy="staged-quoted-message"]').should('not.be.visible');
-      cy
-        .get('[data-cy="message"]')
+      cy.get('[data-cy="message"]')
         .first()
         .should('be.visible')
         .click();
-      cy
-        .get('[data-cy="reply-to-message"]')
+      cy.get('[data-cy="reply-to-message"]')
         .first()
         .should('be.visible')
         .click({ force: true });
@@ -119,8 +117,7 @@ describe('chat input', () => {
       cy.get('[data-cy="staged-quoted-message"]').should('be.visible');
 
       // Remove quoted message again
-      cy
-        .get('[data-cy="remove-staged-quoted-message"]')
+      cy.get('[data-cy="remove-staged-quoted-message"]')
         .should('be.visible')
         .click();
       cy.get('[data-cy="staged-quoted-message"]').should('not.be.visible');
@@ -144,8 +141,9 @@ describe('chat input', () => {
 
   describe('thread in archived channel', () => {
     beforeEach(() => {
-      cy.auth(memberInChannelUser.id);
-      cy.visit(`/thread/${archivedThread.id}`);
+      cy.auth(memberInChannelUser.id).then(() =>
+        cy.visit(`/thread/${archivedThread.id}`)
+      );
     });
 
     it('should render', () => {

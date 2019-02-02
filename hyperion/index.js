@@ -5,6 +5,7 @@ debug('Hyperion starting...');
 debug('logging with debug enabled');
 require('isomorphic-fetch'); // prevent https://github.com/withspectrum/spectrum/issues/3032
 import fs from 'fs';
+import statsd from 'shared/middlewares/statsd';
 import express from 'express';
 import Loadable from 'react-loadable';
 import path from 'path';
@@ -16,9 +17,12 @@ import toobusy from 'shared/middlewares/toobusy';
 import addSecurityMiddleware from 'shared/middlewares/security';
 
 const PORT = process.env.PORT || 3006;
-const SEVEN_DAYS = 604800;
+const ONE_HOUR = 3600;
 
 const app = express();
+
+// Instantiate the statsd middleware as soon as possible to get accurate time tracking
+app.use(statsd);
 
 // Trust the now proxy
 app.set('trust proxy', true);
@@ -27,6 +31,9 @@ app.use(toobusy);
 
 // Security middleware.
 addSecurityMiddleware(app, { enableNonce: true, enableCSP: true });
+
+import bodyParser from 'body-parser';
+app.use(bodyParser.json());
 
 if (process.env.NODE_ENV === 'development') {
   const logging = require('shared/middlewares/logging');
@@ -81,9 +88,6 @@ if (process.env.NODE_ENV === 'development') {
 
 import cookieParser from 'cookie-parser';
 app.use(cookieParser());
-
-import bodyParser from 'body-parser';
-app.use(bodyParser.json());
 
 import session from 'shared/middlewares/session';
 app.use(session);
@@ -142,27 +146,30 @@ app.use(
     index: false,
     setHeaders: (res, path) => {
       // Don't cache the serviceworker in the browser
-      if (path.indexOf('sw.js')) {
+      if (path.indexOf('sw.js') > -1) {
         res.setHeader('Cache-Control', 'no-store, no-cache');
         return;
       }
 
-      // Cache static files in now CDN for seven days
-      // (the filename changes if the file content changes, so we can cache these forever)
-      res.setHeader(
-        'Cache-Control',
-        `max-age=${SEVEN_DAYS}, s-maxage=${SEVEN_DAYS}`
-      );
+      if (path.endsWith('.js')) {
+        // Cache static files in now CDN for seven days
+        // (the filename changes if the file content changes, so we can cache these forever)
+        res.setHeader('Cache-Control', `s-maxage=${ONE_HOUR}`);
+      }
     },
   })
 );
 app.get('/static/js/:name', (req: express$Request, res, next) => {
   if (!req.params.name) return next();
   const existingFile = jsFiles.find(file => file.startsWith(req.params.name));
-  if (existingFile)
+  if (existingFile) {
+    if (existingFile.endsWith('.js')) {
+      res.setHeader('Cache-Control', `s-maxage=${ONE_HOUR}`);
+    }
     return res.sendFile(
       path.resolve(__dirname, '..', 'build', 'static', 'js', req.params.name)
     );
+  }
   // Match the first part of the file name, i.e. from "UserSettings.asdf123.chunk.js" match "UserSettings"
   const match = req.params.name.match(/(\w+?)\..+js/i);
   if (!match) return next();

@@ -17,7 +17,7 @@ const Header = ({ thread, currentUser }) => {
 
   const photos = trimmedUsers.map(user => (
     <PhotoWrapper key={user.id}>
-      <Photo user={user} size={60} onlineSize={'large'} />
+      <Photo user={user} size={56} showOnlineStatus={false} />
     </PhotoWrapper>
   ));
 
@@ -36,7 +36,7 @@ const Header = ({ thread, currentUser }) => {
   });
 
   return (
-    <StyledHeader>
+    <StyledHeader data-cy="dm-header">
       <Head title={title} description={description} />
       <PhotosContainer>{photos}</PhotosContainer>
       <Names>{names}</Names>

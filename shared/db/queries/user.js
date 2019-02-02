@@ -13,9 +13,8 @@ import { removeUsersCommunityMemberships } from 'api/models/usersCommunities';
 import { removeUsersChannelMemberships } from 'api/models/usersChannels';
 import { disableAllThreadNotificationsForUser } from 'api/models/usersThreads';
 import { disableAllUsersEmailSettings } from 'api/models/usersSettings';
-import { getUserChannelIds } from 'api/models/usersChannels';
 import type { PaginationOptions } from 'api/utils/paginate-arrays';
-import type { DBUser, FileUpload, DBThread } from 'shared/types';
+import type { DBUser, FileUpload } from 'shared/types';
 
 export const getUserById = createReadQuery((userId: string) => {
   // fallback for a bad id coming in that is a stringified user object
@@ -74,7 +73,7 @@ export const getUserById = createReadQuery((userId: string) => {
   // userId was not a stringified object
   return {
     query: db.table('users').get(userId),
-    tags: (user: ?DBUser) => [userId],
+    tags: () => [userId],
   };
 });
 
@@ -82,6 +81,12 @@ export const getUserByEmail = createReadQuery((email: string) => ({
   query: db.table('users').getAll(email, { index: 'email' }),
   process: (users: ?Array<DBUser>) => (users && users[0]) || null,
   tags: (user: ?DBUser) => (user ? [user.id] : []),
+}));
+
+export const getUsersByEmail = createReadQuery((email: string) => ({
+  query: db.table('users').getAll(email, { index: 'email' }),
+  process: (users: Array<?DBUser>) => users,
+  tags: (users: Array<?DBUser>) => (users ? users.map(u => u && u.id) : []),
 }));
 
 export const getUserByUsername = createReadQuery((username: string) => ({
@@ -109,6 +114,9 @@ export const storeUser = createWriteQuery((user: Object) => ({
       {
         ...user,
         modifiedAt: null,
+        createdAt: new Date(),
+        termsLastAcceptedAt: new Date(),
+        lastSeen: new Date(),
       },
       { returnChanges: 'always' }
     )
@@ -190,48 +198,29 @@ export const getUserByIndex = createReadQuery(
 // prettier-ignore
 export const createOrFindUser = (user: Object, providerMethod: string): Promise<?DBUser> => {
   // if a user id gets passed in, we know that a user most likely exists and we just need to retrieve them from the db
-  // however, if a user id doesn't exist we need to do a lookup by the email address passed in - if an email address doesn't exist, we know that we're going to be creating a new user
+  // if not, we need to create a new user
   let promise;
   if (user.id) {
     promise = getUserById(user.id);
-  } else {
-    if (user[providerMethod]) {
-      promise = getUserByIndex(providerMethod, user[providerMethod]).then(
-        storedUser => {
+  } else if (user[providerMethod]) {
+    promise = getUserByIndex(providerMethod, user[providerMethod])
+      .then(storedUser => {
           if (storedUser) {
             return storedUser;
           }
 
-          if (user.email) {
-            return getUserByEmail(user.email);
-          } else {
-            return Promise.resolve(null);
-          }
+          return Promise.resolve(null);
         }
       );
-    } else {
-      if (user.email) {
-        promise = getUserByEmail(user.email);
-      } else {
-        promise = Promise.resolve(null);
-      }
-    }
+  } else {
+    promise = Promise.resolve(null);
   }
 
   return promise
     .then(storedUser => {
-      // if a user is found with an id or email, return the user in the db
+      // if a user is found with the providerId, return the user in the db
       if (storedUser && storedUser.id) {
-        // if a user is signing in with a second auth method from what their user was created with, store the new auth method
-        if (!storedUser[providerMethod]) {
-          return saveUserProvider(
-            storedUser.id,
-            providerMethod,
-            user[providerMethod]
-          ).then(() => Promise.resolve(storedUser));
-        } else {
-          return Promise.resolve(storedUser);
-        }
+        return Promise.resolve(storedUser);
       }
 
       // if no user exists, create a new one with the oauth profile data
@@ -251,8 +240,7 @@ export const getEverything = (userId: string, options: PaginationOptions): Promi
   const { first, after } = options
   return db
     .table('usersChannels')
-    .getAll(userId, { index: 'userId' })
-    .filter(userChannel => userChannel('isMember').eq(true))
+    .getAll([userId, "member"], [userId, "owner"], [userId, "moderator"], { index: 'userIdAndRole' })
     .map(userChannel => userChannel('channelId'))
     .run()
     .then(
@@ -545,38 +533,23 @@ export const editUser = createWriteQuery(
   }
 );
 
-export const setUserOnline = createWriteQuery(
-  (id: string, isOnline: boolean) => ({
-    query: db
-      .table('users')
-      .get(id)
-      .update(
-        {
-          isOnline,
-          lastSeen: new Date(),
-        },
-        { returnChanges: 'always' }
-      )
-      .run()
-      .then(
-        ({
-          changes,
-        }: {
-          changes: [{ old_val?: DBUser, new_val?: DBUser }],
-        }) => {
-          const user = changes[0].new_val || changes[0].old_val;
-          if (!user)
-            throw new Error(
-              `Failed to set user online status to ${String(
-                isOnline
-              )} for user ${id}`
-            );
-          return user;
-        }
-      ),
-    invalidateTags: (user: ?DBUser) => [id],
-  })
-);
+export const setUserOnline = async (id: string, isOnline: boolean) => {
+  return await db
+    .table('users')
+    .get(id)
+    .update(
+      {
+        isOnline,
+        lastSeen: new Date(),
+      },
+      { returnChanges: 'always' }
+    )
+    .run()
+    .then(res => {
+      const user = res.changes[0].new_val || res.changes[0].old_val;
+      return user;
+    });
+};
 
 export const setUserPendingEmail = createWriteQuery(
   (userId: string, pendingEmail: string) => ({
@@ -719,7 +692,7 @@ export const banUser = createWriteQuery((args: BanUserType) => {
   const { userId, reason, currentUserId } = args;
 
   return {
-    invalidateTags: data => [userId],
+    invalidateTags: () => [userId],
     query: db
       .table('users')
       .get(userId)

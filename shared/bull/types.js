@@ -15,6 +15,7 @@ import type {
   Recipient,
   NewMessageNotificationEmailThread,
 } from 'athena/queues/new-message-in-thread/buffer-email';
+import type { CleanDigestThread, Timeframe } from 'chronos/types';
 
 export type Job<JobData> = {|
   id: string,
@@ -23,11 +24,16 @@ export type Job<JobData> = {|
   finished: () => Promise<void>,
 |};
 
-type JobOptions = {|
+export type JobOptions = {|
   jobId?: number | string,
   delay?: number,
   removeOnComplete?: boolean,
   removeOnFail?: boolean,
+  attempts?: number,
+  repeat?: {
+    cron: string,
+    tz: 'America/Los_Angeles',
+  },
 |};
 
 interface BullQueue<JobData> {
@@ -181,12 +187,11 @@ export type SendNewDirectMessageEmailJobData = {
   recipient: {
     email: string,
     name: string,
-    username: string,
+    username: ?string,
     userId: string,
   },
   user: {
-    displayName: string,
-    username: string,
+    username: ?string,
     id: string,
     name: string,
   },
@@ -321,7 +326,7 @@ export type AdminToxicMessageJobData = { message: DBMessage };
 export type AdminToxicThreadJobData = { thread: DBThread };
 
 export type AdminSlackImportJobData = {
-  thisUser: DBUser,
+  user: DBUser,
   community: DBCommunity,
   invitedCount: number,
   teamName: string,
@@ -392,33 +397,78 @@ export type SearchIndexJobData = {
   event: 'created' | 'edited' | 'deleted' | 'moved',
 };
 
+export type AdminActiveCommunityReportEmailJobData = {
+  dacCount: number,
+  wacCount: number,
+  macCount: number,
+  newDac: Array<string>,
+  newWac: Array<string>,
+  newMac: Array<string>,
+  lostDac: Array<string>,
+  lostWac: Array<string>,
+  lostMac: Array<string>,
+};
+
+export type ProcessIndividualDigestJobData = {
+  userId: string,
+  topCommunityIds: Array<string>,
+  timeframe: Timeframe,
+};
+
+export type SendDigestEmailJobData = {
+  email: ?string,
+  userId: string,
+  username: ?string,
+  user: DBUser,
+  threads: Array<CleanDigestThread>,
+  reputationString: string,
+  communities: ?Array<DBCommunity>,
+  timeframe: Timeframe,
+  hasOverflowThreads: boolean,
+};
+
+export type SendGridWebhookEventJobData = {
+  event: {
+    email: string,
+    timestamp: number,
+    event: string,
+    category: string,
+    sg_event_id: string,
+    sg_message_id: string,
+    response: string,
+    status: string,
+    reason: string,
+    attempt: string,
+  },
+};
+
+export type AdminToxicContentEmailJobData = {
+  type: string,
+  text: string,
+  user: DBUser,
+  thread: DBThread,
+  community: DBCommunity,
+  channel: DBChannel,
+  toxicityConfidence: {
+    perspectiveScore: number,
+  },
+};
+
 export type Queues = {
   // athena
   sendThreadNotificationQueue: BullQueue<ThreadNotificationJobData>,
   sendCommunityNotificationQueue: BullQueue<CommunityNotificationJobData>,
   trackUserThreadLastSeenQueue: BullQueue<UserThreadLastSeenJobData>,
   sendReactionNotificationQueue: BullQueue<ReactionNotificationJobData>,
-  sendThreadReactionNotificationQueue: BullQueue<
-    ThreadReactionNotificationJobData
-  >,
+  sendThreadReactionNotificationQueue: BullQueue<ThreadReactionNotificationJobData>,
   sendPrivateChannelRequestQueue: BullQueue<PrivateChannelRequestJobData>,
-  sendPrivateChannelRequestApprovedQueue: BullQueue<
-    PrivateChannelRequestApprovedJobData
-  >,
+  sendPrivateChannelRequestApprovedQueue: BullQueue<PrivateChannelRequestApprovedJobData>,
   sendPrivateCommunityRequestQueue: BullQueue<PrivateCommunityRequestJobData>,
-  sendPrivateCommunityRequestApprovedQueue: BullQueue<
-    PrivateCommunityRequestApprovedJobData
-  >,
-  sendPrivateChannelInviteNotificationQueue: BullQueue<
-    PrivateChannelInviteNotificationJobData
-  >,
-  sendCommunityInviteNotificationQueue: BullQueue<
-    CommunityInviteNotificationJobData
-  >,
+  sendPrivateCommunityRequestApprovedQueue: BullQueue<PrivateCommunityRequestApprovedJobData>,
+  sendPrivateChannelInviteNotificationQueue: BullQueue<PrivateChannelInviteNotificationJobData>,
+  sendCommunityInviteNotificationQueue: BullQueue<CommunityInviteNotificationJobData>,
   sendChannelNotificationQueue: BullQueue<ChannelNotificationJobData>,
-  sendDirectMessageNotificationQueue: BullQueue<
-    DirectMessageNotificationJobData
-  >,
+  sendDirectMessageNotificationQueue: BullQueue<DirectMessageNotificationJobData>,
   sendMessageNotificationQueue: BullQueue<MessageNotificationJobData>,
   sendMentionNotificationQueue: BullQueue<MentionNotificationJobData>,
   sendNotificationAsPushQueue: BullQueue<PushNotificationsJobData>,
@@ -429,29 +479,19 @@ export type Queues = {
   sendNewUserWelcomeEmailQueue: BullQueue<NewUserWelcomeEmailJobData>,
   sendNewCommunityWelcomeEmailQueue: BullQueue<NewCommunityWelcomeEmailJobData>,
   sendEmailValidationEmailQueue: BullQueue<EmailValidationEmailJobData>,
-  sendAdministratorEmailValidationEmailQueue: BullQueue<
-    AdministratorEmailValidationEmailJobData
-  >,
+  sendAdministratorEmailValidationEmailQueue: BullQueue<AdministratorEmailValidationEmailJobData>,
   sendNewMessageEmailQueue: BullQueue<SendNewMessageEmailJobData>,
   bufferNewMessageEmailQueue: BullQueue<BufferNewMessageEmailJobData>,
   sendNewDirectMessageEmailQueue: BullQueue<SendNewDirectMessageEmailJobData>,
   sendNewMentionMessageEmailQueue: BullQueue<SendNewMessageMentionEmailJobData>,
   sendNewMentionThreadEmailQueue: BullQueue<SendNewThreadMentionEmailJobData>,
-  sendPrivateChannelRequestEmailQueue: BullQueue<
-    SendPrivateChannelRequestEmailJobData
-  >,
-  sendPrivateChannelRequestApprovedEmailQueue: BullQueue<
-    SendPrivateChannelRequestApprovedEmailJobData
-  >,
-  sendPrivateCommunityRequestEmailQueue: BullQueue<
-    SendPrivateCommunityRequestEmailJobData
-  >,
-  sendPrivateCommunityRequestApprovedEmailQueue: BullQueue<
-    SendPrivateCommunityRequestApprovedEmailJobData
-  >,
-  sendThreadCreatedNotificationEmailQueue: BullQueue<
-    SendNewThreadNotificationEmailJobData
-  >,
+  sendPrivateChannelRequestEmailQueue: BullQueue<SendPrivateChannelRequestEmailJobData>,
+  sendPrivateChannelRequestApprovedEmailQueue: BullQueue<SendPrivateChannelRequestApprovedEmailJobData>,
+  sendPrivateCommunityRequestEmailQueue: BullQueue<SendPrivateCommunityRequestEmailJobData>,
+  sendPrivateCommunityRequestApprovedEmailQueue: BullQueue<SendPrivateCommunityRequestApprovedEmailJobData>,
+  sendThreadCreatedNotificationEmailQueue: BullQueue<SendNewThreadNotificationEmailJobData>,
+  sendDigestEmailQueue: BullQueue<SendDigestEmailJobData>,
+  sendgridEventQueue: BullQueue<SendGridWebhookEventJobData>,
 
   // mercury
   processReputationEventQueue: BullQueue<ReputationEventJobData>,
@@ -465,16 +505,21 @@ export type Queues = {
   searchQueue: BullQueue<SearchIndexJobData>,
 
   // admin
-  _adminSendCommunityCreatedEmailQueue: BullQueue<
-    AdminCommunityCreatedEmailJobData
-  >,
+  _adminSendCommunityCreatedEmailQueue: BullQueue<AdminCommunityCreatedEmailJobData>,
   _adminProcessToxicMessageQueue: BullQueue<AdminToxicMessageJobData>,
   _adminProcessToxicThreadQueue: BullQueue<AdminToxicThreadJobData>,
   _adminProcessSlackImportQueue: BullQueue<AdminSlackImportJobData>,
   _adminProcessUserReportedQueue: BullQueue<AdminProcessUserReportedJobData>,
   // TODO: Properly type this
-  _adminSendToxicContentEmailQueue: BullQueue<any>,
-  _adminProcessUserSpammingThreadsQueue: BullQueue<
-    AdminUserSpammingThreadsJobData
-  >,
+  _adminSendToxicContentEmailQueue: BullQueue<AdminToxicContentEmailJobData>,
+  _adminProcessUserSpammingThreadsQueue: BullQueue<AdminUserSpammingThreadsJobData>,
+  _adminSendActiveCommunityReportEmailQueue: BullQueue<AdminActiveCommunityReportEmailJobData>,
+
+  // chronos
+  weeklyDigestQueue: BullQueue<void>,
+  dailyDigestQueue: BullQueue<void>,
+  processIndividualDigestQueue: BullQueue<ProcessIndividualDigestJobData>,
+  dailyCoreMetricsQueue: BullQueue<void>,
+  activeCommunityReportQueue: BullQueue<void>,
+  removeSeenUsersNotificationsQueue: BullQueue<void>,
 };

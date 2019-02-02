@@ -131,8 +131,6 @@ const init = () => {
             profile._json.entities.url.urls.length > 0
               ? profile._json.entities.url.urls[0].expanded_url
               : '',
-          createdAt: new Date(),
-          lastSeen: new Date(),
         };
 
         return createOrFindUser(user, 'providerId')
@@ -198,8 +196,6 @@ const init = () => {
               ? profile.photos[0].value
               : null,
           coverPhoto: profile._json.cover ? profile._json.cover.source : '',
-          createdAt: new Date(),
-          lastSeen: new Date(),
         };
 
         return createOrFindUser(user, 'fbProviderId')
@@ -264,8 +260,6 @@ const init = () => {
             profile._json.urls && profile._json.urls.length > 0
               ? profile._json.urls[0].value
               : '',
-          createdAt: new Date(),
-          lastSeen: new Date(),
         };
 
         return createOrFindUser(user, 'googleProviderId')
@@ -310,7 +304,16 @@ const init = () => {
           // 1
           // if the user already has a githubProviderId, don't override it
           if (req.user.githubProviderId) {
-            if (!req.user.githubUsername) {
+            /*
+              Update the cached content of the github profile that we store
+              in redis for the graphql resolver. This allows us to put a button
+              on the client for a user to re-connect a github profile from
+              the web app which will update the cache with any changed usernames
+            */
+            if (
+              !req.user.githubUsername ||
+              req.user.githubUsername !== githubUsername
+            ) {
               return saveUserProvider(
                 req.user.id,
                 'githubProviderId',
@@ -377,8 +380,6 @@ const init = () => {
             null,
           profilePhoto:
             (profile._json.avatar_url && profile._json.avatar_url) || null,
-          createdAt: new Date(),
-          lastSeen: new Date(),
         };
 
         return createOrFindUser(user, 'githubProviderId')

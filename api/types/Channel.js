@@ -24,6 +24,7 @@ const Channel = /* GraphQL */ `
     threads: Int
       @deprecated(reason: "metaData.threads is deprecated and always returns 0")
     members: Int
+    onlineMembers: Int
   }
 
   input CreateChannelInput {
@@ -122,6 +123,7 @@ const Channel = /* GraphQL */ `
 
   extend type Mutation {
     createChannel(input: CreateChannelInput!): Channel
+      @rateLimit(max: 10, window: "10m")
     editChannel(input: EditChannelInput!): Channel
     deleteChannel(channelId: ID!): Boolean
     toggleChannelSubscription(channelId: ID!): Channel

@@ -56,7 +56,6 @@ const Thread = /* GraphQL */ `
     lastActive: Date
     type: ThreadType
     edits: [Edit!]
-    participants: [User] @cost(complexity: 1)
     messageConnection(
       first: Int
       after: String
@@ -68,11 +67,15 @@ const Thread = /* GraphQL */ `
     watercooler: Boolean
     currentUserLastSeen: Date @cost(complexity: 1)
     reactions: ThreadReactions @cost(complexity: 1)
+    metaImage: String
 
     attachments: [Attachment]
       @deprecated(reason: "Attachments no longer used for link previews")
     isCreator: Boolean @deprecated(reason: "Use Thread.isAuthor instead")
     creator: User! @deprecated(reason: "Use Thread.author instead")
+    participants: [User]
+      @cost(complexity: 1)
+      @deprecated(reason: "No longer used")
   }
 
   input SearchThreadsFilter {
@@ -125,6 +128,7 @@ const Thread = /* GraphQL */ `
 
   extend type Mutation {
     publishThread(thread: ThreadInput!): Thread
+      @rateLimit(max: 7, window: "10m")
     editThread(input: EditThreadInput!): Thread
     setThreadLock(threadId: ID!, value: Boolean!): Thread
     toggleThreadNotifications(threadId: ID!): Thread

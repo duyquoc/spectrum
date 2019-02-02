@@ -1,7 +1,7 @@
 // @flow
 import * as React from 'react';
 import compose from 'recompose/compose';
-import Link from 'src/components/link';
+import { Link } from 'react-router-dom';
 import { connect } from 'react-redux';
 import { withRouter } from 'react-router';
 import { timeDifference } from 'shared/time-difference';
@@ -19,6 +19,7 @@ import { toJSON, toState } from 'shared/draft-utils';
 import Textarea from 'react-textarea-autosize';
 import ActionBar from './actionBar';
 import ConditionalWrap from 'src/components/conditionalWrap';
+import { withCurrentUser } from 'src/components/withCurrentUser';
 import {
   UserHoverProfile,
   CommunityHoverProfile,
@@ -32,6 +33,7 @@ import {
   ThreadSubtitle,
 } from '../style';
 import { track, events, transformations } from 'src/helpers/analytics';
+import getThreadLink from 'src/helpers/get-thread-link';
 import type { Dispatch } from 'redux';
 import { ErrorBoundary } from 'src/components/error';
 
@@ -55,6 +57,7 @@ type Props = {
   dispatch: Dispatch<Object>,
   currentUser: ?Object,
   toggleEdit: Function,
+  innerRef?: any,
 };
 
 class ThreadDetailPure extends React.Component<Props, State> {
@@ -339,7 +342,7 @@ class ThreadDetailPure extends React.Component<Props, State> {
       : null;
 
     return (
-      <ThreadWrapper>
+      <ThreadWrapper innerRef={this.props.innerRef}>
         <ThreadContent isEditing={isEditing}>
           {/* $FlowFixMe */}
           <ErrorBoundary fallbackComponent={null}>
@@ -384,7 +387,7 @@ class ThreadDetailPure extends React.Component<Props, State> {
               </Link>
             </ChannelHoverProfile>
             <span>&nbsp;·&nbsp;</span>
-            <Link to={`/thread/${thread.id}`}>
+            <Link to={'/' + getThreadLink(thread)}>
               {timestamp}
               {thread.modifiedAt && (
                 <React.Fragment>
@@ -438,9 +441,11 @@ const ThreadDetail = compose(
 )(ThreadDetailPure);
 
 const map = state => ({
-  currentUser: state.users.currentUser,
   flyoutOpen: state.flyoutOpen,
 });
 
-// $FlowIssue
-export default connect(map)(ThreadDetail);
+export default compose(
+  withCurrentUser,
+  // $FlowIssue
+  connect(map)
+)(ThreadDetail);

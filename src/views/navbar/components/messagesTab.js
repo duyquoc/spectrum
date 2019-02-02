@@ -3,7 +3,7 @@ import * as React from 'react';
 import { connect } from 'react-redux';
 import compose from 'recompose/compose';
 import Icon from 'src/components/icons';
-import { isDesktopApp } from 'src/helpers/is-desktop-app';
+import { isDesktopApp } from 'src/helpers/desktop-app-utils';
 import viewNetworkHandler from 'src/components/viewNetworkHandler';
 import { updateNotificationsCount } from 'src/actions/notifications';
 import getUnreadDMQuery from 'shared/graphql/queries/notification/getDirectMessageNotifications';
@@ -12,6 +12,8 @@ import markDirectMessageNotificationsSeenMutation from 'shared/graphql/mutations
 import { MessageTab, Label } from '../style';
 import { track, events } from 'src/helpers/analytics';
 import type { Dispatch } from 'redux';
+import type { WebsocketConnectionType } from 'src/reducers/connectionStatus';
+import { useConnectionRestored } from 'src/hooks/useConnectionRestored';
 
 type Props = {
   active: boolean,
@@ -21,11 +23,14 @@ type Props = {
   markDirectMessageNotificationsSeen: Function,
   data: {
     directMessageNotifications: GetDirectMessageNotificationsType,
+    refetch: Function,
   },
   subscribeToDMs: Function,
   refetch: Function,
   count: number,
   dispatch: Dispatch<Object>,
+  networkOnline: boolean,
+  websocketConnection: WebsocketConnectionType,
 };
 
 type State = {
@@ -37,41 +42,65 @@ class MessagesTab extends React.Component<Props, State> {
     subscription: null,
   };
 
+  componentDidMount() {
+    this.subscribe();
+    return this.setCount(this.props);
+  }
+
   shouldComponentUpdate(nextProps) {
-    const prevProps = this.props;
+    const curr = this.props;
+
+    if (curr.networkOnline !== nextProps.networkOnline) return true;
+    if (curr.websocketConnection !== nextProps.websocketConnection) return true;
 
     // if a refetch completes
-    if (prevProps.isRefetching !== nextProps.isRefetching) return true;
+    if (curr.isRefetching !== nextProps.isRefetching) return true;
 
     // once the initial query finishes loading
     if (
-      !prevProps.data.directMessageNotifications &&
+      !curr.data.directMessageNotifications &&
       nextProps.data.directMessageNotifications
     )
       return true;
 
     // if a subscription updates the number of records returned
     if (
-      prevProps.data &&
-      prevProps.data.directMessageNotifications &&
+      curr.data &&
+      curr.data.directMessageNotifications &&
+      curr.data.directMessageNotifications.edges &&
+      nextProps.data &&
       nextProps.data.directMessageNotifications &&
-      prevProps.data.directMessageNotifications.edges.length !==
+      nextProps.data.directMessageNotifications.edges &&
+      curr.data.directMessageNotifications.edges.length !==
         nextProps.data.directMessageNotifications.edges.length
     )
       return true;
-
     // if the user clicks on the messages tab
-    if (prevProps.active !== nextProps.active) return true;
+    if (curr.active !== nextProps.active) return true;
 
     // any time the count changes
-    if (prevProps.count !== nextProps.count) return true;
+    if (curr.count !== nextProps.count) return true;
 
     return false;
   }
 
-  componentDidUpdate(prevProps) {
-    const { data: prevData } = prevProps;
+  componentDidUpdate(prev: Props) {
+    const { data: prevData } = prev;
     const curr = this.props;
+
+    const didReconnect = useConnectionRestored({ curr, prev });
+    if (didReconnect && curr.data.refetch) {
+      curr.data.refetch();
+    }
+
+    // if the component updates for the first time
+    if (
+      !prevData.directMessageNotifications &&
+      curr.data.directMessageNotifications
+    ) {
+      this.subscribe();
+      return this.setCount(this.props);
+    }
 
     // never update the badge if the user is viewing the messages tab
     // set the count to 0 if the tab is active so that if a user loads
@@ -79,7 +108,7 @@ class MessagesTab extends React.Component<Props, State> {
 
     // if the user is viewing /messages, mark any incoming notifications
     // as seen, so that when they navigate away the message count won't shoot up
-    if (!prevProps.active && this.props.active) {
+    if (this.props.active) {
       return this.markAllAsSeen();
     }
 
@@ -91,15 +120,6 @@ class MessagesTab extends React.Component<Props, State> {
         prevData.directMessageNotifications.edges.length
     )
       return this.markAllAsSeen();
-
-    // if the component updates for the first time
-    if (
-      !prevData.directMessageNotifications &&
-      curr.data.directMessageNotifications
-    ) {
-      this.subscribe();
-      return this.setCount(this.props);
-    }
 
     // if the component updates with changed or new dm notifications
     // if any are unseen, set the counts
@@ -144,10 +164,11 @@ class MessagesTab extends React.Component<Props, State> {
   };
 
   setCount(props) {
-    const { data: { directMessageNotifications } } = props;
+    const {
+      data: { directMessageNotifications },
+    } = props;
     const { dispatch } = this.props;
     const nodes = this.convertEdgesToNodes(directMessageNotifications);
-
     // set to 0 if no notifications exist yet
     if (!nodes || nodes.length === 0) {
       return dispatch(
@@ -157,12 +178,14 @@ class MessagesTab extends React.Component<Props, State> {
 
     // bundle dm notifications
     const obj = {};
-    nodes.filter(n => n && !n.isSeen).map(o => {
-      if (!o) return null;
-      if (obj[o.context.id]) return null;
-      obj[o.context.id] = o;
-      return null;
-    });
+    nodes
+      .filter(n => n && !n.isSeen)
+      .map(o => {
+        if (!o) return null;
+        if (obj[o.context.id]) return null;
+        obj[o.context.id] = o;
+        return null;
+      });
 
     // count of unique notifications determined by the thread id
     const count = Object.keys(obj).length;
@@ -221,6 +244,7 @@ class MessagesTab extends React.Component<Props, State> {
         data-cy="navbar-messages"
       >
         <Icon
+          dataCy={`unread-badge-${count}`}
           glyph={count > 0 ? 'message-fill' : 'message'}
           count={count > 10 ? '10+' : count > 0 ? count.toString() : null}
           size={isDesktopApp() ? 28 : 32}
@@ -233,6 +257,8 @@ class MessagesTab extends React.Component<Props, State> {
 
 const map = state => ({
   count: state.notifications.directMessageNotifications,
+  networkOnline: state.connectionStatus.networkOnline,
+  websocketConnection: state.connectionStatus.websocketConnection,
 });
 export default compose(
   // $FlowIssue

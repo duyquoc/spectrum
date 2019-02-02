@@ -164,15 +164,20 @@ export const getViewableThreadsByUser = async (
   // get a list of the channelIds the current user is allowed to see threads
   const getCurrentUsersChannelIds = db
     .table('usersChannels')
-    .getAll(currentUser, { index: 'userId' })
-    .filter({ isBlocked: false, isMember: true })
+    .getAll(
+      [currentUser, 'member'],
+      [currentUser, 'moderator'],
+      [currentUser, 'owner'],
+      {
+        index: 'userIdAndRole',
+      }
+    )
     .map(userChannel => userChannel('channelId'))
     .run();
 
   const getCurrentUserCommunityIds = db
     .table('usersCommunities')
-    .getAll(currentUser, { index: 'userId' })
-    .filter({ isMember: true })
+    .getAll([currentUser, true], { index: 'userIdAndIsMember' })
     .map(userCommunity => userCommunity('communityId'))
     .run();
 
@@ -274,23 +279,27 @@ export const getViewableParticipantThreadsByUser = async (
   // get a list of the channelIds the current user is allowed to see threads for
   const getCurrentUsersChannelIds = db
     .table('usersChannels')
-    .getAll(currentUser, { index: 'userId' })
-    .filter({ isBlocked: false, isMember: true })
+    .getAll(
+      [currentUser, 'member'],
+      [currentUser, 'moderator'],
+      [currentUser, 'owner'],
+      {
+        index: 'userIdAndRole',
+      }
+    )
     .map(userChannel => userChannel('channelId'))
     .run();
 
   const getCurrentUserCommunityIds = db
     .table('usersCommunities')
-    .getAll(currentUser, { index: 'userId' })
-    .filter({ isMember: true })
+    .getAll([currentUser, true], { index: 'userIdAndIsMember' })
     .map(userCommunity => userCommunity('communityId'))
     .run();
 
   // get a list of the channels where the user participated in a thread
   const getParticipantChannelIds = db
     .table('usersThreads')
-    .getAll(evalUser, { index: 'userId' })
-    .filter({ isParticipant: true })
+    .getAll([evalUser, true], { index: 'userIdAndIsParticipant' })
     .eqJoin('threadId', db.table('threads'))
     .zip()
     .pluck('channelId', 'threadId')
@@ -298,8 +307,7 @@ export const getViewableParticipantThreadsByUser = async (
 
   const getParticipantCommunityIds = db
     .table('usersThreads')
-    .getAll(evalUser, { index: 'userId' })
-    .filter({ isParticipant: true })
+    .getAll([evalUser, true], { index: 'userIdAndIsParticipant' })
     .eqJoin('threadId', db.table('threads'))
     .zip()
     .pluck('communityId', 'threadId')
@@ -317,7 +325,7 @@ export const getViewableParticipantThreadsByUser = async (
     getParticipantCommunityIds,
   ]);
 
-  const participantThreadIds = participantChannelIds.map(c => c.threadId);
+  const participantThreadIds = participantChannelIds.map(c => c && c.threadId);
   const distinctParticipantChannelIds = participantChannelIds
     .map(c => c.channelId)
     .filter((x, i, a) => a.indexOf(x) === i);
@@ -379,8 +387,7 @@ export const getPublicParticipantThreadsByUser = (evalUser: string, options: Pag
   const { first, after } = options
   return db
     .table('usersThreads')
-    .getAll(evalUser, { index: 'userId' })
-    .filter({ isParticipant: true })
+    .getAll([evalUser, true], { index: 'userIdAndIsParticipant' })
     .eqJoin('threadId', db.table('threads'))
     .without({
       left: [

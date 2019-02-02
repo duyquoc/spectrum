@@ -33,6 +33,8 @@ import './browser-shim';
 const Routes = require('../../src/routes').default;
 import { initStore } from '../../src/store';
 
+const IN_MAINTENANCE_MODE =
+  process.env.REACT_APP_MAINTENANCE_MODE === 'enabled';
 const IS_PROD = process.env.NODE_ENV === 'production';
 const FORCE_DEV = process.env.FORCE_DEV;
 const FIVE_MINUTES = 300;
@@ -43,6 +45,14 @@ if (!IS_PROD || FORCE_DEV) debug('Querying API at localhost:3001/api');
 const renderer = (req: express$Request, res: express$Response) => {
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
 
+  if (IN_MAINTENANCE_MODE) {
+    res.status(500);
+    res.send(
+      `<!DOCTYPE html><html><head><title>Spectrum</title> <style>body{margin: 0;}html{-webkit-font-smoothing: antialiased; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol';}h1, p{line-height: 1.5;}.container{background: rgb(56,24,229);background: linear-gradient(90deg, rgba(56,24,229,1) 0%, rgba(56,24,229,0.8029586834733894) 52%, rgba(56,24,229,1) 100%); width: 100%; display: flex; height: 100vh; justify-content: center;}.item{color: white; font-weight: bold; align-self: center; text-align: center;}a{color: white;}span{font-size: 40px; padding: 0; margin: 0;}</style></head><body> <div class="container"> <div class="item"> <span>🛠</span> <h1>We are currently undergoing maintenance.</h1> <p>We'll be back shortly. Follow <a href="https://twitter.com/withspectrum">@withspectrum on Twitter</a> to stay up to date. </p></div></div></body></html>`
+    );
+    return;
+  }
+
   debug(`server-side render ${req.url}`);
   debug(`querying API at https://${req.hostname}/api`);
   const schemaLink = new SchemaLink({
@@ -50,15 +60,6 @@ const renderer = (req: express$Request, res: express$Response) => {
     context: {
       user: req.user || null,
       loaders: createLoaders(),
-      getImageSignatureExpiration: () => {
-        // see api/apollo-server.js
-        const date = new Date();
-        date.setHours(24);
-        date.setMinutes(0);
-        date.setSeconds(0);
-        date.setMilliseconds(0);
-        return date.getTime();
-      },
     },
   });
 
@@ -86,9 +87,6 @@ const renderer = (req: express$Request, res: express$Response) => {
   const { t } = req.query;
 
   const initialReduxState = {
-    users: {
-      currentUser: req.user ? req.user : null,
-    },
     dashboardFeed: {
       activeThread: t ? t : '',
       mountedWithActiveThread: t ? t : '',
@@ -113,8 +111,7 @@ const renderer = (req: express$Request, res: express$Response) => {
         <HelmetProvider context={helmetContext}>
           <Provider store={store}>
             <StaticRouter location={req.url} context={routerContext}>
-              {/* $FlowIssue */}
-              <Routes currentUser={req.user} />
+              <Routes maintenanceMode={IN_MAINTENANCE_MODE} />
             </StaticRouter>
           </Provider>
         </HelmetProvider>
@@ -132,9 +129,14 @@ const renderer = (req: express$Request, res: express$Response) => {
         res.redirect(301, routerContext.url);
         return;
       }
-
-      res.status(200);
-
+      // maintainance mode
+      if (IN_MAINTENANCE_MODE) {
+        debug('maintainance mode enabled, sending 503');
+        res.status(503);
+        res.set('Retry-After', '3600');
+      } else {
+        res.status(200);
+      }
       const state = store.getState();
       const data = client.extract();
       const { helmet } = helmetContext;
@@ -144,7 +146,7 @@ const renderer = (req: express$Request, res: express$Response) => {
       if (!req.user) {
         res.setHeader(
           'Cache-Control',
-          `max-age=${FIVE_MINUTES}, s-maxage=${ONE_HOUR}, stale-while-revalidate=${FIVE_MINUTES}, must-revalidate`
+          `s-maxage=${ONE_HOUR}, stale-while-revalidate=${FIVE_MINUTES}, must-revalidate`
         );
       } else {
         res.setHeader('Cache-Control', 's-maxage=0');
@@ -187,6 +189,8 @@ const renderer = (req: express$Request, res: express$Response) => {
       );
     })
     .catch(err => {
+      // Avoid memory leaks, see https://github.com/styled-components/styled-components/issues/1624#issuecomment-425382979
+      sheet.complete();
       console.error(err);
       const sentryId =
         process.env.NODE_ENV === 'production'
@@ -194,7 +198,7 @@ const renderer = (req: express$Request, res: express$Response) => {
           : 'Only output in production.';
       res.status(500);
       res.send(
-        `Oops, something went wrong. Please try again! (Error ID: ${sentryId})`
+        `<!DOCTYPE html><html><head><title>Spectrum</title> <style>body{margin: 0;}html{-webkit-font-smoothing: antialiased; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol';}h1, p{line-height: 1.5;}.container{background: rgb(56,24,229);background: linear-gradient(90deg, rgba(56,24,229,1) 0%, rgba(56,24,229,0.8029586834733894) 52%, rgba(56,24,229,1) 100%); width: 100%; display: flex; height: 100vh; justify-content: center;}.item{color: white; font-weight: bold; align-self: center; text-align: center;}a{color: white;}span{font-size: 40px; padding: 0; margin: 0;}</style></head><body> <div class="container"> <div class="item"> <span>😢</span> <h1>Oops, something went wrong. Sorry!</h1> <p>Please refresh or <a href="/">go home</a>. </p></div></div></body></html>`
       );
     });
 };

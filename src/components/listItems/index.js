@@ -1,6 +1,6 @@
 // @flow
 import * as React from 'react';
-import Link from 'src/components/link';
+import { Link } from 'react-router-dom';
 import Badge from 'src/components/badges';
 import { UserAvatar, CommunityAvatar } from 'src/components/avatar';
 import { CommunityHoverProfile } from 'src/components/hoverProfile';
@@ -39,17 +39,16 @@ export class CommunityListItem extends React.Component<CommunityProps> {
               community={community}
               size={32}
               showHoverProfile={false}
-              clickable={false}
+              isClickable={false}
             />
             <Col style={{ marginLeft: '12px' }}>
               <Heading>{community.name}</Heading>
               {/* greater than -1 because we want to pass the 0 to the component so it returns null */}
-              {typeof reputation === 'number' &&
-                reputation > -1 && (
-                  <Meta>
-                    <Reputation size={'default'} reputation={reputation} />
-                  </Meta>
-                )}
+              {typeof reputation === 'number' && reputation > -1 && (
+                <Meta>
+                  <Reputation size={'default'} reputation={reputation} />
+                </Meta>
+              )}
             </Col>
             <ActionContainer className={'action'}>{children}</ActionContainer>
           </Row>
@@ -63,7 +62,7 @@ export class CommunityListItem extends React.Component<CommunityProps> {
 }
 
 type CardProps = {
-  clickable?: boolean,
+  isClickable?: boolean,
   contents: any,
   meta?: string,
   children?: any,
@@ -71,7 +70,7 @@ type CardProps = {
 
 export const ThreadListItem = (props: CardProps): React$Element<any> => {
   return (
-    <Wrapper clickable={props.clickable}>
+    <Wrapper isClickable={props.isClickable}>
       <Row>
         <Col>
           <Heading>{props.contents.content.title}</Heading>
@@ -93,17 +92,17 @@ export const UserListItem = ({
       ? user.contextPermissions.reputation
       : 0
     : user.reputation && typeof user.reputation === 'number'
-      ? user.reputation
-      : user.totalReputation && typeof user.totalReputation === 'number'
-        ? user.totalReputation
-        : 0;
+    ? user.reputation
+    : user.totalReputation && typeof user.totalReputation === 'number'
+    ? user.totalReputation
+    : 0;
 
   const role =
     user.contextPermissions && user.contextPermissions.isOwner
       ? 'Admin'
       : user.contextPermissions && user.contextPermissions.isModerator
-        ? 'Moderator'
-        : null;
+      ? 'Moderator'
+      : null;
 
   return (
     <Wrapper border>

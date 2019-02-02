@@ -6,67 +6,85 @@ import { withApollo } from 'react-apollo';
 import setLastSeenMutation from 'shared/graphql/mutations/directMessageThread/setDMThreadLastSeen';
 import Messages from '../components/messages';
 import Header from '../components/header';
-import ChatInput from 'src/components/chatInput';
+import ChatInput, { cleanSuggestionUserObject } from 'src/components/chatInput';
 import viewNetworkHandler from 'src/components/viewNetworkHandler';
-import getDirectMessageThread from 'shared/graphql/queries/directMessageThread/getDirectMessageThread';
+import getDirectMessageThread, {
+  type GetDirectMessageThreadType,
+} from 'shared/graphql/queries/directMessageThread/getDirectMessageThread';
 import { MessagesContainer, ViewContent } from '../style';
 import { Loading } from 'src/components/loading';
 import ViewError from 'src/components/viewError';
 import { ErrorBoundary } from 'src/components/error';
+import type { WebsocketConnectionType } from 'src/reducers/connectionStatus';
+import { useConnectionRestored } from 'src/hooks/useConnectionRestored';
+import { withCurrentUser } from 'src/components/withCurrentUser';
 
 type Props = {
-  data: Object,
+  data: {
+    refetch: Function,
+    directMessageThread: GetDirectMessageThreadType,
+  },
   isLoading: boolean,
-  setActiveThread: Function,
   setLastSeen: Function,
   match: Object,
   id: ?string,
   currentUser: Object,
   threadSliderIsOpen: boolean,
+  networkOnline: boolean,
+  websocketConnection: WebsocketConnectionType,
 };
+
 class ExistingThread extends React.Component<Props> {
   scrollBody: ?HTMLDivElement;
   chatInput: ?ChatInput;
 
   componentDidMount() {
-    const threadId = this.props.id;
-    this.props.setActiveThread(threadId);
+    const { threadId } = this.props.match.params;
+
+    // escape to prevent this from running on mobile
+    if (!threadId) return;
+
     this.props.setLastSeen(threadId);
     this.forceScrollToBottom();
-
     // autofocus on desktop
     if (window && window.innerWidth > 768 && this.chatInput) {
-      this.chatInput.triggerFocus();
+      this.chatInput.focus();
     }
   }
 
-  componentDidUpdate(prevProps) {
+  componentDidUpdate(prev) {
+    const curr = this.props;
+
+    const didReconnect = useConnectionRestored({ curr, prev });
+    if (didReconnect && curr.data.refetch) {
+      curr.data.refetch();
+    }
+
     // if the thread slider is open, dont be focusing shit up in heyuhr
-    if (this.props.threadSliderIsOpen) return;
+    if (curr.threadSliderIsOpen) return;
     // if the thread slider is closed and we're viewing DMs, refocus the chat input
-    if (
-      prevProps.threadSliderIsOpen &&
-      !this.props.threadSliderIsOpen &&
-      this.chatInput
-    ) {
-      this.chatInput.triggerFocus();
+    if (prev.threadSliderIsOpen && !curr.threadSliderIsOpen && this.chatInput) {
+      this.chatInput.focus();
     }
     // as soon as the direct message thread is loaded, refocus the chat input
     if (
-      this.props.data.directMessageThread &&
-      !prevProps.data.directMessageThread &&
+      curr.data.directMessageThread &&
+      !prev.data.directMessageThread &&
       this.chatInput
     ) {
-      this.chatInput.triggerFocus();
+      this.chatInput.focus();
     }
-    if (prevProps.match.params.threadId !== this.props.match.params.threadId) {
-      const threadId = this.props.match.params.threadId;
-      this.props.setActiveThread(threadId);
-      this.props.setLastSeen(threadId);
+    if (prev.match.params.threadId !== curr.match.params.threadId) {
+      const threadId = curr.match.params.threadId;
+
+      // prevent unnecessary behavior on mobile
+      if (!threadId) return;
+
+      curr.setLastSeen(threadId);
       this.forceScrollToBottom();
       // autofocus on desktop
       if (window && window.innerWidth > 768 && this.chatInput) {
-        this.chatInput.triggerFocus();
+        this.chatInput.focus();
       }
     }
   }
@@ -92,22 +110,30 @@ class ExistingThread extends React.Component<Props> {
     if (id !== 'new') {
       if (data.directMessageThread) {
         const thread = data.directMessageThread;
+        const mentionSuggestions = thread.participants
+          .map(cleanSuggestionUserObject)
+          .filter(user => user && user.username !== currentUser.username);
         return (
           <MessagesContainer>
             <ViewContent
               innerRef={scrollBody => (this.scrollBody = scrollBody)}
             >
-              <ErrorBoundary>
-                <Header thread={thread} currentUser={currentUser} />
-              </ErrorBoundary>
+              {!isLoading ? (
+                <React.Fragment>
+                  <ErrorBoundary>
+                    <Header thread={thread} currentUser={currentUser} />
+                  </ErrorBoundary>
 
-              <Messages
-                id={id}
-                threadType={thread.threadType}
-                currentUser={currentUser}
-                forceScrollToBottom={this.forceScrollToBottom}
-                contextualScrollToBottom={this.contextualScrollToBottom}
-              />
+                  <Messages
+                    id={id}
+                    currentUser={currentUser}
+                    forceScrollToBottom={this.forceScrollToBottom}
+                    contextualScrollToBottom={this.contextualScrollToBottom}
+                  />
+                </React.Fragment>
+              ) : (
+                <Loading />
+              )}
             </ViewContent>
 
             <ChatInput
@@ -116,6 +142,7 @@ class ExistingThread extends React.Component<Props> {
               threadType={'directMessageThread'}
               forceScrollToBottom={this.forceScrollToBottom}
               onRef={chatInput => (this.chatInput = chatInput)}
+              participants={mentionSuggestions}
             />
           </MessagesContainer>
         );
@@ -141,12 +168,17 @@ class ExistingThread extends React.Component<Props> {
   }
 }
 
-const map = state => ({ threadSliderIsOpen: state.threadSlider.isOpen });
+const map = state => ({
+  networkOnline: state.connectionStatus.networkOnline,
+  websocketConnection: state.connectionStatus.websocketConnection,
+  threadSliderIsOpen: state.threadSlider.isOpen,
+});
 export default compose(
   // $FlowIssue
   connect(map),
   getDirectMessageThread,
   setLastSeenMutation,
   withApollo,
+  withCurrentUser,
   viewNetworkHandler
 )(ExistingThread);

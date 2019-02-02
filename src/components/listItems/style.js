@@ -1,6 +1,6 @@
 import styled from 'styled-components';
 import theme from 'shared/theme';
-import Link from 'src/components/link';
+import { Link } from 'react-router-dom';
 import {
   Truncate,
   FlexCol,
@@ -28,7 +28,7 @@ export const Wrapper = styled(FlexCol)`
 
   &:hover > div > div h3,
   &:hover .action {
-    color: ${props => (props.clickable ? props.theme.brand.alt : '')};
+    color: ${props => (props.isClickable ? props.theme.brand.alt : '')};
   }
 `;
 
