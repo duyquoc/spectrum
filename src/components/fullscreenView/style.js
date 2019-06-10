@@ -1,7 +1,8 @@
 // @flow
 import theme from 'shared/theme';
-import styled, { css } from 'styled-components';
-import { zIndex } from '../globals';
+import styled from 'styled-components';
+import { zIndex } from 'src/components/globals';
+import { MEDIA_BREAK } from 'src/components/layout';
 
 export const FullscreenViewContainer = styled.div`
   position: fixed;
@@ -24,16 +25,12 @@ export const FullscreenViewContainer = styled.div`
 export const Illustrations = styled.span`
   z-index: ${zIndex.background};
 
-  ${p =>
-    !p.showBackgroundOnMobile &&
-    css`
-      @media screen and (max-width: 768px) {
-        display: none;
-      }
-    `};
+  @media screen and (max-width: ${MEDIA_BREAK}px) {
+    display: none;
+  }
 `;
 
-export const Close = styled.div`
+export const CloseLink = styled.a`
   color: ${theme.text.default};
   position: absolute;
   top: 8px;
